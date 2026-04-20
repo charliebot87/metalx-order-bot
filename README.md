@@ -177,12 +177,12 @@ All configuration is via environment variables:
 To prevent anyone from subscribing to someone else's orders, the bot requires **on-chain proof of ownership**:
 
 1. User sends `/link myaccount` to the bot
-2. Bot generates a unique code (e.g. `METALX-A3K9VN`)
-3. User sends **0.0001 XPR** (or any amount) from `myaccount` to `token.burn` with the code as the memo
-4. Bot polls Hyperion for transfers matching the account + memo + recipient
+2. Bot tells user to send any amount of XPR to `token.burn` with memo `METALX-BOT`
+3. User sends **0.0001 XPR** (or any amount) from `myaccount` to `token.burn` with memo `METALX-BOT`
+4. Bot polls Hyperion for a transfer matching account + recipient + memo
 5. On match → account is verified and linked
 
-This proves the user controls the private key for that account. The XPR is sent to [`token.burn`](https://explorer.xprnetwork.org/account/token.burn) — a tiny burn to verify ownership.
+This proves the user controls the private key for that account. The memo is always `METALX-BOT` — you only need to do this once per account. The XPR is sent to [`token.burn`](https://explorer.xprnetwork.org/account/token.burn) — a tiny burn to verify ownership.
 
 ---
 
@@ -280,9 +280,9 @@ If the bot was offline for more than `MAX_STALE_SECONDS` (default: 5 minutes), i
 
 ### Verification not working
 - Send any amount of XPR (we suggest `0.0001 XPR`) to `token.burn`
-- The memo must match the code exactly (case-sensitive)
+- The memo must be exactly `METALX-BOT` (case-sensitive)
 - Make sure you're sending **from** the account you're trying to link
-- Try `/link <account>` again to get a fresh code
+- The bot checks your recent transfer history — make sure the burn happened recently
 
 ### "All RPC endpoints failed"
 - The default Hyperion endpoints may be temporarily down

@@ -98,8 +98,6 @@ export class HyperionClient {
     const params = new URLSearchParams({
       account,
       filter: 'eosio.token:transfer',
-      'act.data.from': account,
-      'act.data.to': 'token.burn',
       sort: 'desc',
       limit: String(limit),
     });
@@ -151,13 +149,19 @@ export function asLogOrder(action: HyperionAction): LogOrderData | null {
 
 // ─── Checkpoint helpers ────────────────────────────────────────────────────────
 
-/** Advance an ISO timestamp by 1ms to avoid re-fetching the last seen action. */
-export function advanceTimestamp(iso: string): string {
-  return new Date(new Date(iso).getTime() + 1).toISOString().replace(/(\.\d{3})Z$/, '$1');
+/** Ensure a timestamp has a Z suffix (Hyperion returns without it). */
+function ensureUtc(iso: string): string {
+  return iso.endsWith('Z') ? iso : iso + 'Z';
 }
 
-/** Return the highest @timestamp seen in a set of actions. */
+/** Advance an ISO timestamp by 1ms to avoid re-fetching the last seen action. */
+export function advanceTimestamp(iso: string): string {
+  return new Date(new Date(ensureUtc(iso)).getTime() + 1).toISOString();
+}
+
+/** Return the highest @timestamp seen in a set of actions, with Z suffix. */
 export function latestTimestamp(actions: HyperionAction[]): string | null {
   if (actions.length === 0) return null;
-  return actions.reduce((max, a) => (a['@timestamp'] > max ? a['@timestamp'] : max), actions[0]['@timestamp']);
+  const raw = actions.reduce((max, a) => (a['@timestamp'] > max ? a['@timestamp'] : max), actions[0]['@timestamp']);
+  return ensureUtc(raw);
 }

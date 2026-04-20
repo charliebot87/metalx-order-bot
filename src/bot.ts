@@ -6,17 +6,7 @@ import type { HyperionClient } from './hyperion.js';
 
 const VERIFICATION_AMOUNT = '0.0001 XPR';
 const VERIFICATION_RECIPIENT = 'token.burn';
-const CODE_PREFIX = 'METALX-';
-const CODE_LENGTH = 6;
-
-function generateCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars
-  let code = CODE_PREFIX;
-  for (let i = 0; i < CODE_LENGTH; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
+const VERIFICATION_MEMO = 'METALX-BOT';
 
 function isValidAccount(account: string): boolean {
   // XPR Network account names: 1-12 chars, a-z1-5.
@@ -118,8 +108,7 @@ export function setupBot(
       );
     }
 
-    const code = generateCode();
-    await db.upsertUser(chatId, arg, code);
+    await db.upsertUser(chatId, arg, VERIFICATION_MEMO);
 
     const instructions = [
       `🔗 <b>Verification required for <code>${escapeHtml(arg)}</code></b>`,
@@ -129,18 +118,16 @@ export function setupBot(
       `• <b>From:</b> <code>${escapeHtml(arg)}</code>`,
       `• <b>To:</b> <code>${VERIFICATION_RECIPIENT}</code>`,
       `• <b>Amount:</b> <code>${VERIFICATION_AMOUNT}</code> (or any amount)`,
-      `• <b>Memo:</b> <code>${code}</code>`,
+      `• <b>Memo:</b> <code>${VERIFICATION_MEMO}</code>`,
       '',
-      '🔥 The XPR is sent to <code>token.burn</code> — a small burn to verify ownership.',
+      '🔥 The XPR is sent to <code>token.burn</code> — a tiny burn to verify ownership.',
       '',
-      '⏳ The bot will automatically detect the transfer and verify your account within a few minutes.',
+      '⏳ The bot will automatically detect the transfer and verify your account within a few seconds.',
       '',
       '<b>Using WebAuth Wallet:</b>',
       '1. Open <a href="https://webauth.com">WebAuth Wallet</a>',
       `2. Send <code>${VERIFICATION_AMOUNT}</code> XPR to <code>${VERIFICATION_RECIPIENT}</code>`,
-      `3. Set the memo to: <code>${code}</code>`,
-      '',
-      'You can re-run /link to get a new code if needed.',
+      `3. Set the memo to: <code>${VERIFICATION_MEMO}</code>`,
     ].join('\n');
 
     await ctx.reply(instructions, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } });

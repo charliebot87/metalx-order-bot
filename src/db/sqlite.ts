@@ -11,8 +11,8 @@ const SCHEMA_STATEMENTS = [
   verified               INTEGER NOT NULL DEFAULT 0,
   verification_code      TEXT,
   verification_started_at TEXT,
-  created_at             TEXT    NOT NULL DEFAULT (datetime("now")),
-  updated_at             TEXT    NOT NULL DEFAULT (datetime("now")),
+  created_at             TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at             TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(telegram_chat_id, xpr_account)
 )`,
   `CREATE TABLE IF NOT EXISTS notification_log (
@@ -21,7 +21,7 @@ const SCHEMA_STATEMENTS = [
   trade_id         INTEGER NOT NULL,
   order_id         INTEGER NOT NULL,
   market_id        INTEGER NOT NULL,
-  notified_at      TEXT    NOT NULL DEFAULT (datetime("now")),
+  notified_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(telegram_chat_id, trade_id, order_id)
 )`,
   `CREATE TABLE IF NOT EXISTS bot_state (
@@ -96,12 +96,12 @@ export class SqliteDatabase implements IDatabase {
     this.db
       .prepare(
         `INSERT INTO users (telegram_chat_id, xpr_account, verified, verification_code, verification_started_at)
-         VALUES (?, ?, 0, ?, datetime("now"))
+         VALUES (?, ?, 0, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(telegram_chat_id, xpr_account) DO UPDATE SET
            verification_code       = excluded.verification_code,
            verification_started_at = excluded.verification_started_at,
            verified                = 0,
-           updated_at              = datetime("now")`
+           updated_at              = CURRENT_TIMESTAMP`
       )
       .run(chatId, account, verificationCode);
   }
@@ -110,7 +110,7 @@ export class SqliteDatabase implements IDatabase {
     this.db
       .prepare(
         `UPDATE users
-         SET verified = 1, verification_code = NULL, updated_at = datetime("now")
+         SET verified = 1, verification_code = NULL, updated_at = CURRENT_TIMESTAMP
          WHERE telegram_chat_id = ? AND xpr_account = ?`
       )
       .run(chatId, account);

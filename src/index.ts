@@ -49,10 +49,14 @@ async function pollVerification(
   notifications: NotificationService,
 ): Promise<void> {
   const pending = await db.getAllPendingUsers();
+  if (pending.length > 0) {
+    console.log(`[verification] Checking ${pending.length} pending user(s)`);
+  }
 
   for (const user of pending) {
     if (!user.verification_code) continue;
     const { telegram_chat_id: chatId, xpr_account: account, verification_code: code } = user;
+    console.log(`[verification] Checking ${account} for code ${code}`);
 
     try {
       const transfers = await hyperion.getTransfers(account);
@@ -63,7 +67,7 @@ async function pollVerification(
           d.from === account &&
           d.to === 'token.burn' &&
           typeof d.memo === 'string' &&
-          d.memo.trim() === code
+          d.memo.trim() === 'METALX-BOT'
         );
       });
 
@@ -94,16 +98,16 @@ async function pollDexActions(
 
   if (!checkpoint) {
     // First run — start from now
-    checkpoint = new Date().toISOString().replace(/(\.\d{3})Z$/, '$1');
+    checkpoint = new Date().toISOString();
     await db.setState('last_timestamp', checkpoint);
     console.log('[poll] First run, starting from now:', checkpoint);
     return;
   }
 
   // Stale protection: if checkpoint is older than MAX_STALE_SECONDS, reset
-  const checkpointAge = (Date.now() - new Date(checkpoint + 'Z').getTime()) / 1000;
+  const checkpointAge = (Date.now() - new Date(checkpoint).getTime()) / 1000;
   if (checkpointAge > MAX_STALE_SECONDS) {
-    const resetTo = new Date().toISOString().replace(/(\.\d{3})Z$/, '$1');
+    const resetTo = new Date().toISOString();
     console.warn(
       `[poll] Checkpoint is ${Math.round(checkpointAge)}s old (>${MAX_STALE_SECONDS}s), resetting to now`,
     );
