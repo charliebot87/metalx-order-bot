@@ -24,9 +24,12 @@ function parseEndpoints(envVar: string, defaults: string[]): string[] {
 const BOT_TOKEN = requireEnv('TELEGRAM_BOT_TOKEN');
 
 const HYPERION_ENDPOINTS = parseEndpoints('HYPERION_ENDPOINTS', [
+  'https://proton.protonuk.io',
+  'https://proton-api.eosiomadrid.io',
   'https://api-xprnetwork-main.saltant.io',
-  'https://proton.greymass.com',
-  'https://api.protonnz.com',
+  'https://xpr-mainnet-api.bloxprod.io',
+  'https://proton-hyperion.luminaryvisn.com',
+  'https://proton.eosusa.io',
 ]);
 
 const RPC_ENDPOINTS = parseEndpoints('RPC_ENDPOINTS', [
