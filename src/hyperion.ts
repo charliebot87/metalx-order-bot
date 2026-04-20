@@ -54,6 +54,10 @@ export class EndpointPool {
     console.warn(`[hyperion] ${url} failed ${ep.failures}x, backoff ${backoff / 1000}s`);
   }
 
+  endpointCount(): number {
+    return this.endpoints.length;
+  }
+
   status(): string {
     return this.endpoints
       .map(e => {
@@ -107,23 +111,30 @@ export class HyperionClient {
   }
 
   private async request<T>(path: string): Promise<T> {
-    const url = this.pool.pick();
-    const fullUrl = `${url}${path}`;
+    const maxRetries = this.pool.endpointCount();
+    let lastErr: Error | null = null;
 
-    try {
-      const res = await fetch(fullUrl, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
-      });
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const url = this.pool.pick();
+      const fullUrl = `${url}${path}`;
 
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      const data = (await res.json()) as T;
-      this.pool.markSuccess(url);
-      return data;
-    } catch (err) {
-      this.pool.markFailure(url);
-      throw err;
+      try {
+        const res = await fetch(fullUrl, {
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        const data = (await res.json()) as T;
+        this.pool.markSuccess(url);
+        return data;
+      } catch (err) {
+        this.pool.markFailure(url);
+        lastErr = err as Error;
+      }
     }
+
+    throw lastErr ?? new Error('All endpoints failed');
   }
 
   endpointStatus(): string {
@@ -136,15 +147,46 @@ export class HyperionClient {
 export function asLogExec(action: HyperionAction): LogExecData | null {
   if (action.act.name !== 'logexec') return null;
   const d = action.act.data as Record<string, unknown>;
-  if (typeof d.trade_id !== 'number' || typeof d.market_id !== 'number') return null;
-  return d as unknown as LogExecData;
+  if (d.trade_id === undefined || d.market_id === undefined) return null;
+  // Hyperion returns numeric fields as strings — coerce them
+  return {
+    trade_id: Number(d.trade_id),
+    market_id: Number(d.market_id),
+    price: Number(d.price),
+    bid_user: String(d.bid_user),
+    bid_user_order_id: Number(d.bid_user_order_id),
+    bid_total: Number(d.bid_total),
+    bid_amount: Number(d.bid_amount),
+    bid_fee: Number(d.bid_fee),
+    ask_user: String(d.ask_user),
+    ask_user_order_id: Number(d.ask_user_order_id),
+    ask_total: Number(d.ask_total),
+    ask_amount: Number(d.ask_amount),
+    ask_fee: Number(d.ask_fee),
+    order_side: Number(d.order_side),
+  } satisfies LogExecData;
 }
 
 export function asLogOrder(action: HyperionAction): LogOrderData | null {
   if (action.act.name !== 'logorder') return null;
   const d = action.act.data as Record<string, unknown>;
-  if (!d.order || typeof d.status !== 'string') return null;
-  return d as unknown as LogOrderData;
+  if (!d.order || !d.status) return null;
+  const o = d.order as Record<string, unknown>;
+  return {
+    order: {
+      order_id: Number(o.order_id),
+      market_id: Number(o.market_id),
+      quantity: Number(o.quantity),
+      price: Number(o.price),
+      account_name: String(o.account_name),
+      order_side: Number(o.order_side),
+      order_type: Number(o.order_type),
+      trigger_price: Number(o.trigger_price),
+      fill_type: Number(o.fill_type),
+    },
+    quantity_change: Number(d.quantity_change),
+    status: String(d.status),
+  } satisfies LogOrderData;
 }
 
 // ─── Checkpoint helpers ────────────────────────────────────────────────────────

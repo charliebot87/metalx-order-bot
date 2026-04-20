@@ -29,7 +29,7 @@ export class RateLimiter {
 
 // ─── Message formatting ────────────────────────────────────────────────────────
 
-const METALX_URL = 'https://metalx.com';
+const METALX_URL = 'https://app.metalx.com';
 const EXPLORER_URL = 'https://explorer.xprnetwork.org/transaction';
 
 function explorerLink(trxId: string): string {
@@ -37,7 +37,7 @@ function explorerLink(trxId: string): string {
 }
 
 function marketUrl(market: MarketInfo): string {
-  return `${METALX_URL}/trade/${market.bidSymbol}_${market.askSymbol}`;
+  return `${METALX_URL}/dex/${market.bidSymbol}_${market.askSymbol}`;
 }
 
 /**
@@ -56,7 +56,16 @@ function marketUrl(market: MarketInfo): string {
 export function buildFillMessage(n: FillNotification): string {
   const { market, exec, isBidUser, isFull, remaining, trxId } = n;
 
-  const side = isBidUser ? 'Buy' : 'Sell';
+  // order_side: 1=taker was buying, 2=taker was selling
+  // bid_user = taker, ask_user = maker (resting order)
+  // If you're bid_user: your side = order_side
+  // If you're ask_user: your side = opposite of order_side
+  let userSide: string;
+  if (isBidUser) {
+    userSide = exec.order_side === 1 ? 'Buy' : 'Sell';
+  } else {
+    userSide = exec.order_side === 1 ? 'Sell' : 'Buy';
+  }
   const emoji = isFull ? '🟢' : '🟡';
   const status = isFull ? 'Order Filled' : 'Partial Fill';
   const orderId = isBidUser ? exec.bid_user_order_id : exec.ask_user_order_id;
@@ -81,7 +90,7 @@ export function buildFillMessage(n: FillNotification): string {
 
   if (isFull) {
     body = [
-      `${emoji} <b>${status} (${side})</b>`,
+      `${emoji} <b>${status} (${userSide})</b>`,
       '',
       `Market: <b>${marketName}</b>`,
       `Price: ${priceStr}`,
@@ -97,7 +106,7 @@ export function buildFillMessage(n: FillNotification): string {
         ? `${formatRaw(remaining, market.bidPrecision)} ${market.bidSymbol}`
         : 'unknown';
     body = [
-      `${emoji} <b>${status} (${side})</b>`,
+      `${emoji} <b>${status} (${userSide})</b>`,
       '',
       `Market: <b>${marketName}</b>`,
       `Amount filled: ${amountStr}`,
@@ -145,11 +154,13 @@ export class NotificationService {
     const message = buildFillMessage(n);
 
     try {
+      console.log(`[notifications] Sending fill notification: trade=${n.exec.trade_id} to chat=${n.chatId}`);
       await this.bot.api.sendMessage(n.chatId, message, {
         parse_mode: 'HTML',
         link_preview_options: { is_disabled: true },
       });
       await this.db.recordNotification(n.chatId, n.exec.trade_id, orderId, n.market.market_id);
+      console.log(`[notifications] Sent successfully: trade=${n.exec.trade_id}`);
       return true;
     } catch (err) {
       // If the user blocked the bot, remove them gracefully
