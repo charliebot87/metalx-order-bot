@@ -178,11 +178,11 @@ To prevent anyone from subscribing to someone else's orders, the bot requires **
 
 1. User sends `/link myaccount` to the bot
 2. Bot generates a unique code (e.g. `METALX-A3K9VN`)
-3. User sends **0.0001 XPR** from `myaccount` to `myaccount` (self-transfer) with the code as the memo
-4. Bot polls Hyperion for transfers matching the account + memo
+3. User sends **0.0001 XPR** (or any amount) from `myaccount` to `token.burn` with the code as the memo
+4. Bot polls Hyperion for transfers matching the account + memo + recipient
 5. On match → account is verified and linked
 
-This proves the user controls the private key for that account. The verification amount (0.0001 XPR) is negligible and goes back to yourself.
+This proves the user controls the private key for that account. The XPR is sent to [`token.burn`](https://explorer.xprnetwork.org/account/token.burn) — a tiny burn to verify ownership.
 
 ---
 
@@ -279,9 +279,9 @@ If the bot was offline for more than `MAX_STALE_SECONDS` (default: 5 minutes), i
 - Check the bot logs for Hyperion errors
 
 ### Verification not working
-- Make sure you're sending exactly `0.0001 XPR` (4 decimal places)
+- Send any amount of XPR (we suggest `0.0001 XPR`) to `token.burn`
 - The memo must match the code exactly (case-sensitive)
-- The transfer must be a **self-transfer** (from and to the same account)
+- Make sure you're sending **from** the account you're trying to link
 - Try `/link <account>` again to get a fresh code
 
 ### "All RPC endpoints failed"

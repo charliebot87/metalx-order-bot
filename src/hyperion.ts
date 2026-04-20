@@ -91,13 +91,15 @@ export class HyperionClient {
   }
 
   /**
-   * Fetch recent eosio.token:transfer actions for an account, used for
-   * verifying the self-transfer verification memo.
+   * Fetch recent eosio.token:transfer actions sent by an account,
+   * used for verifying the burn-to-token.burn verification flow.
    */
   async getTransfers(account: string, limit = 30): Promise<HyperionAction[]> {
     const params = new URLSearchParams({
       account,
       filter: 'eosio.token:transfer',
+      'act.data.from': account,
+      'act.data.to': 'token.burn',
       sort: 'desc',
       limit: String(limit),
     });

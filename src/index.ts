@@ -61,7 +61,7 @@ async function pollVerification(
         return (
           t.act.name === 'transfer' &&
           d.from === account &&
-          d.to === account &&
+          d.to === 'token.burn' &&
           typeof d.memo === 'string' &&
           d.memo.trim() === code
         );

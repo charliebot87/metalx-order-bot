@@ -5,6 +5,7 @@ import type { NotificationService } from './notifications.js';
 import type { HyperionClient } from './hyperion.js';
 
 const VERIFICATION_AMOUNT = '0.0001 XPR';
+const VERIFICATION_RECIPIENT = 'token.burn';
 const CODE_PREFIX = 'METALX-';
 const CODE_LENGTH = 6;
 
@@ -123,18 +124,20 @@ export function setupBot(
     const instructions = [
       `🔗 <b>Verification required for <code>${escapeHtml(arg)}</code></b>`,
       '',
-      'To prove you own this account, please send a self-transfer on XPR Network:',
+      'To prove you own this account, send a small XPR transfer:',
       '',
       `• <b>From:</b> <code>${escapeHtml(arg)}</code>`,
-      `• <b>To:</b> <code>${escapeHtml(arg)}</code>`,
-      `• <b>Amount:</b> <code>${VERIFICATION_AMOUNT}</code>`,
+      `• <b>To:</b> <code>${VERIFICATION_RECIPIENT}</code>`,
+      `• <b>Amount:</b> <code>${VERIFICATION_AMOUNT}</code> (or any amount)`,
       `• <b>Memo:</b> <code>${code}</code>`,
+      '',
+      '🔥 The XPR is sent to <code>token.burn</code> — a small burn to verify ownership.',
       '',
       '⏳ The bot will automatically detect the transfer and verify your account within a few minutes.',
       '',
-      '<b>Using Proton Web Wallet:</b>',
-      '1. Go to <a href="https://wallet.xprnetwork.org">wallet.xprnetwork.org</a>',
-      `2. Send <code>${VERIFICATION_AMOUNT}</code> XPR to yourself`,
+      '<b>Using WebAuth Wallet:</b>',
+      '1. Open <a href="https://webauth.com">WebAuth Wallet</a>',
+      `2. Send <code>${VERIFICATION_AMOUNT}</code> XPR to <code>${VERIFICATION_RECIPIENT}</code>`,
       `3. Set the memo to: <code>${code}</code>`,
       '',
       'You can re-run /link to get a new code if needed.',
