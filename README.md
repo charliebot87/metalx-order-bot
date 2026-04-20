@@ -195,7 +195,6 @@ The bot monitors all Metal X trading pairs:
 | 1 | XPR/XMD | XPR ↔ XMD |
 | 2 | XBTC/XMD | Bitcoin ↔ XMD |
 | 3 | XETH/XMD | Ethereum ↔ XMD |
-| 4 | XMD/XUSDT | XMD ↔ Tether |
 | 7 | XMT/XMD | Metal DAO ↔ XMD |
 | 9 | LOAN/XMD | LOAN ↔ XMD |
 | 10 | METAL/XMD | Metal ↔ XMD |
