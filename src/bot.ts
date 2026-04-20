@@ -201,7 +201,7 @@ export function setupBot(
     }
 
     lines.push('');
-    lines.push('The bot monitors all 18 Metal X markets for your order fills.');
+    lines.push('The bot monitors all XMD trading pairs on Metal X for your order fills.');
 
     await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
   });
@@ -210,7 +210,7 @@ export function setupBot(
 
   bot.command('markets', async ctx => {
     const all = await markets.getAll();
-    const lines = ['<b>Metal X — Supported Markets</b>', ''];
+    const lines = ['<b>Metal X — Supported Markets (XMD pairs)</b>', ''];
     for (const m of all) {
       lines.push(`• ${m.bidSymbol}/<b>${m.askSymbol}</b> (market #${m.market_id})`);
     }

@@ -3,7 +3,7 @@
 A self-hosted Telegram bot that sends you real-time notifications when your orders fill on [Metal X](https://metalx.com) — the decentralized exchange on XPR Network.
 
 - ✅ Full and partial fill notifications
-- ✅ All 18 Metal X trading pairs
+- ✅ All XMD trading pairs on Metal X
 - ✅ Secure account verification (on-chain proof of ownership)
 - ✅ SQLite (local) or PostgreSQL (Railway/cloud)
 - ✅ Multiple RPC endpoint rotation with automatic failover
@@ -196,10 +196,7 @@ The bot monitors all Metal X trading pairs:
 | 2 | XBTC/XMD | Bitcoin ↔ XMD |
 | 3 | XETH/XMD | Ethereum ↔ XMD |
 | 4 | XMD/XUSDT | XMD ↔ Tether |
-| 5 | XPR/XUSDC | XPR ↔ USDC |
-| 6 | XBTC/XUSDC | Bitcoin ↔ USDC |
 | 7 | XMT/XMD | Metal DAO ↔ XMD |
-| 8 | XMT/XUSDC | Metal DAO ↔ USDC |
 | 9 | LOAN/XMD | LOAN ↔ XMD |
 | 10 | METAL/XMD | Metal ↔ XMD |
 | 11 | XDC/XMD | XDC ↔ XMD |
@@ -211,7 +208,7 @@ The bot monitors all Metal X trading pairs:
 | 17 | XXLM/XMD | Stellar ↔ XMD |
 | 18 | XADA/XMD | Cardano ↔ XMD |
 
-Markets are loaded from the on-chain `dex` contract and refreshed every 10 minutes.
+Only XMD pairs are monitored. Markets are loaded from the on-chain `dex` contract and refreshed every 10 minutes.
 
 ---
 

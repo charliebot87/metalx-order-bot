@@ -24,16 +24,21 @@ export class MarketRegistry {
     return Array.from(this.markets.values());
   }
 
-  /** Force-refresh market data from chain. */
+  /** Force-refresh market data from chain. Only XMD pairs are monitored. */
   async refresh(): Promise<void> {
     const raw = await this.fetchAllMarkets();
     this.markets.clear();
     for (const m of raw) {
       const parsed = parseMarket(m);
-      if (parsed) this.markets.set(parsed.market_id, parsed);
+      if (!parsed) continue;
+      // Only monitor XMD pairs (bid/XMD or XMD/ask)
+      if (parsed.bidSymbol !== 'XMD' && parsed.askSymbol !== 'XMD') {
+        continue;
+      }
+      this.markets.set(parsed.market_id, parsed);
     }
     this.lastFetchAt = Date.now();
-    console.log(`[markets] Loaded ${this.markets.size} markets`);
+    console.log(`[markets] Loaded ${this.markets.size} XMD markets`);
   }
 
   private async refreshIfStale(): Promise<void> {
