@@ -53,7 +53,7 @@ export function setupBot(
       '/link <code>&lt;account&gt;</code> — Link an XPR account to receive fill notifications',
       '/unlink <code>&lt;account&gt;</code> — Remove a linked account',
       '/status — Show your linked accounts and notification status',
-      '/markets — List all 18 Metal X trading pairs',
+      '/markets — List all Metal X XMD trading pairs',
       '/help — Show this message',
       '',
       '<b>How it works:</b>',
@@ -63,7 +63,7 @@ export function setupBot(
       '',
       '<b>Links:</b>',
       '• <a href="https://metalx.com">Metal X DEX</a>',
-      '• <a href="https://github.com/metalx-order-bot">Source Code</a>',
+      '• <a href="https://github.com/charliebot87/metalx-order-bot">Source Code</a>',
     ].join('\n');
 
     await ctx.reply(text, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
@@ -205,7 +205,7 @@ export function setupBot(
       lines.push(`• ${m.bidSymbol}/<b>${m.askSymbol}</b> (market #${m.market_id})`);
     }
     lines.push('', `Total: ${all.length} markets`);
-    lines.push('', '<a href="https://metalx.com">Trade on Metal X →</a>');
+    lines.push('', '<a href="https://app.metalx.com">Trade on Metal X →</a>');
 
     await ctx.reply(lines.join('\n'), { parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
   });

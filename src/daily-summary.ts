@@ -5,7 +5,7 @@ const DEX_API = 'https://dex.api.mainnet.metalx.com';
 
 // All XMD market symbols
 const XMD_MARKETS = [
-  'XPR_XMD', 'XBTC_XMD', 'XETH_XMD', 'XMD_XUSDT',
+  'XPR_XMD', 'XBTC_XMD', 'XETH_XMD',
   'XMT_XMD', 'LOAN_XMD', 'METAL_XMD', 'XDC_XMD',
   'XDOGE_XMD', 'XHBAR_XMD', 'XLTC_XMD', 'XXRP_XMD',
   'XSOL_XMD', 'XXLM_XMD', 'XADA_XMD',

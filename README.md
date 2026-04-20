@@ -2,43 +2,42 @@
 
 A self-hosted Telegram bot that sends you real-time notifications when your orders fill on [Metal X](https://metalx.com) — the decentralized exchange on XPR Network.
 
-- ✅ Full and partial fill notifications
+- ✅ Real-time fill notifications (Sold X → Received Y)
+- ✅ Daily trading summary with trade counts and fees
 - ✅ All XMD trading pairs on Metal X
-- ✅ Secure account verification (on-chain proof of ownership)
+- ✅ Secure account verification (burn to `token.burn`)
 - ✅ SQLite (local) or PostgreSQL (Railway/cloud)
-- ✅ Multiple RPC endpoint rotation with automatic failover
+- ✅ 6 Hyperion endpoints with automatic rotation and failover
 - ✅ Notification dedup — no spam on restarts
 - ✅ Rate limiting — max 10 notifications/minute per user
 
 ## What It Looks Like
 
+**Real-time fill notification:**
 ```
-🟢 Order Filled (Buy)
+💰 Order Filled
 
-Market: XBTC/XMD
-Price: 76,150.00 XMD
-Amount: 0.00262600 XBTC
-Total: 199.97 XMD
-Fee: 0 XMD
-
-Order #27358724
+Sold: 500.0000 XPR
+Received: 1.167831 XMD
+Account: charliebot
 
 📊 View on Metal X
 🔍 View Transaction
 ```
 
+**Daily summary (9 AM):**
 ```
-🟡 Partial Fill (Sell)
+📊 Daily Trading Summary
+Account: charliebot
 
-Market: METAL/XMD
-Amount filled: 1,577.60 METAL
-Remaining: 41,293.71 METAL
-Price: 0.001363 XMD
+Total trades: 10 (3 buys, 7 sells)
 
-Order #27357485
+• XPR/XMD: 7 sells
+• XBTC/XMD: 3 buys
 
-📊 View on Metal X
-🔍 View Transaction
+Fees: 4.7500 XPR, 0.0035 XBTC
+
+View on Metal X →
 ```
 
 ---
@@ -53,24 +52,10 @@ Order #27357485
 4. Choose a username (e.g. `my_metalx_bot`)
 5. **Copy the bot token** — you'll need it next
 
-Optionally, set the command menu in BotFather:
-```
-/setcommands
-```
-Then select your bot and paste:
-```
-start - Welcome message and setup guide
-link - Link your XPR account
-unlink - Remove a linked account
-status - Show your linked accounts
-markets - List all Metal X trading pairs
-help - Show all commands
-```
-
 ### 2. Clone & Configure
 
 ```bash
-git clone https://github.com/XPRNetwork/metalx-order-bot.git
+git clone https://github.com/charliebot87/metalx-order-bot.git
 cd metalx-order-bot
 cp .env.example .env
 ```
@@ -99,9 +84,9 @@ npm run dev
 
 1. Open your bot in Telegram
 2. Send `/link youraccount` (your XPR account name)
-3. The bot gives you a verification code
-4. Send a self-transfer of `0.0001 XPR` to yourself with the code as the memo
-5. The bot detects the transfer and verifies your account
+3. The bot tells you to send any amount of XPR to `token.burn` with memo `METALX-BOT`
+4. Send `0.0001 XPR` to `token.burn` with memo `METALX-BOT` using [WebAuth Wallet](https://webauth.com)
+5. The bot detects the burn and verifies your account automatically
 6. You're done — fill notifications are now live
 
 ---
@@ -164,11 +149,12 @@ All configuration is via environment variables:
 |----------|----------|---------|-------------|
 | `TELEGRAM_BOT_TOKEN` | **Yes** | — | Bot token from @BotFather |
 | `DATABASE_URL` | No | *(SQLite)* | PostgreSQL connection string. If set, uses PostgreSQL. |
-| `HYPERION_ENDPOINTS` | No | `https://api-xprnetwork-main.saltant.io,https://proton.greymass.com,https://api.protonnz.com` | Comma-separated Hyperion API endpoints (rotated on failure) |
-| `RPC_ENDPOINTS` | No | `https://api.protonnz.com,https://proton.greymass.com` | Comma-separated RPC endpoints for on-chain reads |
+| `HYPERION_ENDPOINTS` | No | 6 public endpoints | Comma-separated Hyperion API endpoints (rotated on failure) |
+| `RPC_ENDPOINTS` | No | `api.protonnz.com, proton.greymass.com` | Comma-separated RPC endpoints for on-chain reads |
 | `POLL_INTERVAL` | No | `3000` | Milliseconds between poll cycles |
 | `RATE_LIMIT` | No | `10` | Max notifications per user per minute |
 | `MAX_STALE_SECONDS` | No | `300` | If the bot was offline longer than this, skip old events instead of replaying them |
+| `DAILY_SUMMARY_HOUR` | No | `9` | Hour (0-23) to send daily trading summary |
 
 ---
 
@@ -187,8 +173,6 @@ This proves the user controls the private key for that account. The memo is alwa
 ---
 
 ## Supported Markets
-
-The bot monitors all Metal X trading pairs:
 
 | # | Market | Pair |
 |---|--------|------|
@@ -220,24 +204,30 @@ Only XMD pairs are monitored. Markets are loaded from the on-chain `dex` contrac
 └─────────────┘     └──────────────────┘     └──────────────┘
                            │                        │
                     ┌──────┴──────┐          ┌──────┴──────┐
-                    │  SQLite or  │          │  RPC Pool   │
-                    │  PostgreSQL │          │  (markets)  │
+                    │  SQLite or  │          │  DEX Trades  │
+                    │  PostgreSQL │          │  API (daily) │
                     └─────────────┘          └─────────────┘
 ```
 
+### How It Works
+
+The bot monitors **withdrawals from the DEX contract** — when an order fills, the DEX sends your tokens back to your account. The bot detects these transfers and sends you a notification showing what you sold and what you received.
+
 ### Polling Loop
 
-Every 3 seconds (configurable), the bot:
+Every 3 seconds (configurable), for each verified user:
+1. Queries Hyperion for new transfer actions where `from=dex` and `to=user`
+2. Correlates with the most recent deposit to show "Sold X → Received Y"
+3. Sends Telegram notification (with dedup and rate limiting)
+4. Advances the per-user checkpoint timestamp
 
-1. Queries Hyperion for new `dex:logexec` (trade fills) and `dex:logorder` (order status changes) actions
-2. Correlates fills with order updates to determine full vs. partial fills
-3. Checks if any fill involves a verified user's account
-4. Sends Telegram notifications (with dedup and rate limiting)
-5. Advances the checkpoint timestamp
+### Daily Summary
+
+Once per day at the configured hour, the bot fetches each user's trade history from the Metal X DEX API (`dex.api.mainnet.metalx.com`) and sends a summary with trade counts, buy/sell breakdown, and fees per token.
 
 ### Endpoint Rotation
 
-The bot maintains a health score for each Hyperion/RPC endpoint:
+The bot maintains a health score for each Hyperion endpoint:
 - On success: failure count decreases
 - On failure: failure count increases, endpoint enters exponential backoff
 - The bot always picks the healthiest available endpoint
@@ -245,11 +235,11 @@ The bot maintains a health score for each Hyperion/RPC endpoint:
 
 ### Notification Dedup
 
-Every notification is recorded in the database by `(chat_id, trade_id, order_id)`. If the bot restarts and re-processes the same events, duplicates are silently skipped.
+Every notification is recorded in the database by `(chat_id, global_sequence)`. If the bot restarts and re-processes the same events, duplicates are silently skipped.
 
 ### Stale Protection
 
-If the bot was offline for more than `MAX_STALE_SECONDS` (default: 5 minutes), it resets its checkpoint to "now" instead of replaying potentially hundreds of old events. This prevents notification floods after downtime.
+If the bot was offline for more than `MAX_STALE_SECONDS` (default: 5 minutes), it resets its checkpoint to "now" instead of replaying old events. This prevents notification floods after downtime.
 
 ---
 
@@ -261,7 +251,7 @@ If the bot was offline for more than `MAX_STALE_SECONDS` (default: 5 minutes), i
 | `/link <account>` | Link an XPR account with on-chain verification |
 | `/unlink <account>` | Remove a linked account |
 | `/status` | Show your linked accounts and verification status |
-| `/markets` | List all 18 Metal X trading pairs |
+| `/markets` | List all Metal X XMD trading pairs |
 | `/help` | Show all available commands |
 
 ---
@@ -286,7 +276,6 @@ If the bot was offline for more than `MAX_STALE_SECONDS` (default: 5 minutes), i
 ### "All RPC endpoints failed"
 - The default Hyperion endpoints may be temporarily down
 - Add more endpoints via `HYPERION_ENDPOINTS` in your `.env`
-- Check [XPR Network status](https://status.xprnetwork.org) for outages
 
 ### SQLite errors on Railway
 - Railway's filesystem is ephemeral. Use PostgreSQL instead (add the plugin in Railway dashboard)
@@ -313,16 +302,17 @@ npx tsc --noEmit
 
 ```
 src/
-├── index.ts          # Entry point, polling loop, verification
-├── bot.ts            # Telegram bot commands (grammy)
-├── hyperion.ts       # Hyperion client with endpoint rotation
-├── markets.ts        # Market registry + price/amount formatting
-├── notifications.ts  # Notification formatting, dedup, rate limiting
-├── types.ts          # Shared TypeScript interfaces
+├── index.ts            # Entry point, polling loop, verification
+├── bot.ts              # Telegram bot commands (grammy)
+├── hyperion.ts         # Hyperion client with endpoint rotation
+├── markets.ts          # Market registry + price/amount formatting
+├── notifications.ts    # Notification formatting, dedup, rate limiting
+├── daily-summary.ts    # Daily trading summary via DEX trades API
+├── types.ts            # Shared TypeScript interfaces
 └── db/
-    ├── index.ts      # Auto-detect SQLite vs PostgreSQL
-    ├── sqlite.ts     # SQLite implementation (better-sqlite3)
-    └── postgres.ts   # PostgreSQL implementation (pg)
+    ├── index.ts        # Auto-detect SQLite vs PostgreSQL
+    ├── sqlite.ts       # SQLite implementation (better-sqlite3)
+    └── postgres.ts     # PostgreSQL implementation (pg)
 ```
 
 ---
