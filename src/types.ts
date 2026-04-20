@@ -1,25 +1,23 @@
 // ─── Market types ─────────────────────────────────────────────────────────────
 
-/** Raw market row from dex::markets on-chain table */
 export interface OnChainMarket {
   market_id: number;
   bid_token: {
-    sym: string;       // e.g. "8,XBTC"
-    contract: string;  // e.g. "xtokens"
+    sym: string;
+    contract: string;
   };
   ask_token: {
-    quantity: string;  // e.g. "0.000000 XMD"
-    contract: string;  // e.g. "xmd"
+    quantity: string;
+    contract: string;
   };
 }
 
-/** Parsed, human-friendly market info used throughout the bot */
 export interface MarketInfo {
   market_id: number;
-  bidSymbol: string;    // e.g. "XBTC"
-  askSymbol: string;    // e.g. "XMD"
-  bidPrecision: number; // e.g. 8
-  askPrecision: number; // e.g. 6
+  bidSymbol: string;
+  askSymbol: string;
+  bidPrecision: number;
+  askPrecision: number;
   bidContract: string;
   askContract: string;
 }
@@ -46,53 +44,6 @@ export interface TableRowsResponse<T> {
   rows: T[];
   more: boolean;
   next_key: string;
-}
-
-// ─── DEX action data ──────────────────────────────────────────────────────────
-
-/** Data from the dex::logexec inline action */
-export interface LogExecData {
-  trade_id: number;
-  market_id: number;
-  /** Raw uint64 price in ask token units × 10^askPrecision */
-  price: number;
-  bid_user: string;
-  bid_user_order_id: number;
-  /** Raw uint64: total ask-token value of the bid order */
-  bid_total: number;
-  /** Raw uint64: bid-token amount filled */
-  bid_amount: number;
-  /** Raw uint64: fee paid by bid_user (in ask token) */
-  bid_fee: number;
-  ask_user: string;
-  ask_user_order_id: number;
-  /** Raw uint64: total bid-token value of the ask order */
-  ask_total: number;
-  /** Raw uint64: ask-token amount received */
-  ask_amount: number;
-  /** Raw uint64: fee paid by ask_user (in ask token) */
-  ask_fee: number;
-  /** 1 = buy-initiated, 2 = sell-initiated */
-  order_side: number;
-}
-
-/** Data from the dex::logorder inline action */
-export interface LogOrderData {
-  order: {
-    order_id: number;
-    market_id: number;
-    /** Raw uint64 remaining quantity */
-    quantity: number;
-    price: number;
-    account_name: string;
-    order_side: number;
-    order_type: number;
-    trigger_price: number;
-    fill_type: number;
-  };
-  quantity_change: number;
-  /** "create" | "update" (partial fill) | "delete" (fully filled or cancelled) */
-  status: string;
 }
 
 // ─── Database row types ───────────────────────────────────────────────────────
@@ -140,20 +91,6 @@ export interface IDatabase {
   // Bot state (key-value)
   getState(key: string): Promise<string | undefined>;
   setState(key: string, value: string): Promise<void>;
-}
-
-// ─── Fill notification payload ────────────────────────────────────────────────
-
-export interface FillNotification {
-  chatId: string;
-  market: MarketInfo;
-  exec: LogExecData;
-  isBidUser: boolean;
-  isFull: boolean;
-  /** Raw uint64 remaining quantity (bid-token units), present when isFull=false */
-  remaining?: number;
-  trxId: string;
-  timestamp: string;
 }
 
 // ─── Endpoint health tracking ─────────────────────────────────────────────────

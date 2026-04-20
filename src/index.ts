@@ -2,10 +2,10 @@ import 'dotenv/config';
 import { Bot } from 'grammy';
 import { createDatabase } from './db/index.js';
 import { MarketRegistry } from './markets.js';
-import { HyperionClient, asLogExec, asLogOrder, advanceTimestamp, latestTimestamp } from './hyperion.js';
-import { NotificationService, correlateTrx } from './notifications.js';
+import { HyperionClient, parseWithdrawal, advanceTimestamp, latestTimestamp } from './hyperion.js';
+import { NotificationService } from './notifications.js';
 import { setupBot } from './bot.js';
-import type { HyperionAction, FillNotification } from './types.js';
+import type { HyperionAction } from './types.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +41,9 @@ const POLL_INTERVAL_MS  = parseInt(process.env.POLL_INTERVAL    ?? '3000', 10);
 const RATE_LIMIT        = parseInt(process.env.RATE_LIMIT        ?? '10',   10);
 const MAX_STALE_SECONDS = parseInt(process.env.MAX_STALE_SECONDS ?? '300',  10);
 
+// Per-account delay between Hyperion queries to avoid rate limiting
+const PER_ACCOUNT_DELAY_MS = 500;
+
 // ─── Verification polling ──────────────────────────────────────────────────────
 
 async function pollVerification(
@@ -56,7 +59,6 @@ async function pollVerification(
   for (const user of pending) {
     if (!user.verification_code) continue;
     const { telegram_chat_id: chatId, xpr_account: account, verification_code: code } = user;
-    console.log(`[verification] Checking ${account} for code ${code}`);
 
     try {
       const transfers = await hyperion.getTransfers(account);
@@ -75,7 +77,7 @@ async function pollVerification(
         await db.verifyUser(chatId, account);
         await notifications.sendText(
           chatId,
-          `✅ <b>Account verified!</b>\n\n<code>${account}</code> is now linked. You'll receive notifications for all your order fills on Metal X.`,
+          `✅ <b>Account verified!</b>\n\n<code>${account}</code> is now linked. You'll receive notifications when your Metal X orders are filled.`,
         );
         console.log(`[verification] Verified ${account} for chat ${chatId}`);
       }
@@ -85,125 +87,65 @@ async function pollVerification(
   }
 }
 
-// ─── Main polling loop ────────────────────────────────────────────────────────
+// ─── Main polling loop — per-user withdrawal monitoring ─────────────────────────
 
-async function pollDexActions(
+async function pollWithdrawals(
   hyperion: HyperionClient,
   db: Awaited<ReturnType<typeof createDatabase>>,
-  markets: MarketRegistry,
   notifications: NotificationService,
 ): Promise<void> {
-  // Load checkpoint
-  let checkpoint = await db.getState('last_timestamp');
+  const users = await db.getVerifiedUsers();
+  if (users.length === 0) return;
 
-  if (!checkpoint) {
-    // First run — start from now
-    checkpoint = new Date().toISOString();
-    await db.setState('last_timestamp', checkpoint);
-    console.log('[poll] First run, starting from now:', checkpoint);
-    return;
-  }
+  for (let i = 0; i < users.length; i++) {
+    const user = users[i];
+    const account = user.xpr_account;
+    const chatId = user.telegram_chat_id;
 
-  // Stale protection: if checkpoint is older than MAX_STALE_SECONDS, reset
-  const checkpointAge = (Date.now() - new Date(checkpoint).getTime()) / 1000;
-  if (checkpointAge > MAX_STALE_SECONDS) {
-    const resetTo = new Date().toISOString();
-    console.warn(
-      `[poll] Checkpoint is ${Math.round(checkpointAge)}s old (>${MAX_STALE_SECONDS}s), resetting to now`,
-    );
-    await db.setState('last_timestamp', resetTo);
-    return;
-  }
+    // Per-user checkpoint
+    const stateKey = `checkpoint:${account}`;
+    let checkpoint = await db.getState(stateKey);
 
-  let actions: HyperionAction[];
-  try {
-    actions = await hyperion.getDexActions(checkpoint);
-  } catch (err) {
-    console.error('[poll] Hyperion fetch failed:', (err as Error).message);
-    return;
-  }
-
-  if (actions.length === 0) return;
-
-
-
-  // Correlate logorder events by trx_id to know full vs partial fills
-  const correlations = correlateTrx(actions);
-
-  // Get all verified users indexed by XPR account
-  const verifiedUsers = await db.getVerifiedUsers();
-  const accountToChats = new Map<string, string[]>();
-  for (const u of verifiedUsers) {
-    const chats = accountToChats.get(u.xpr_account) ?? [];
-    chats.push(u.telegram_chat_id);
-    accountToChats.set(u.xpr_account, chats);
-  }
-
-  // Process each logexec action
-  for (const action of actions) {
-    const exec = asLogExec(action);
-    if (!exec) continue;
-
-    const market = await markets.get(exec.market_id);
-    if (!market) {
-      console.warn(`[poll] Unknown market_id ${exec.market_id}`);
+    if (!checkpoint) {
+      checkpoint = new Date().toISOString();
+      await db.setState(stateKey, checkpoint);
       continue;
     }
 
-    const corr = correlations.get(action.trx_id);
-
-    // Notify bid_user (buyer)
-    const bidChats = accountToChats.get(exec.bid_user) ?? [];
-    for (const chatId of bidChats) {
-      const orderId = exec.bid_user_order_id;
-      const isFull = corr?.deletedOrderIds.has(orderId) ?? false;
-      const logOrderUpdate = corr?.orderUpdates.get(orderId);
-      const remaining = isFull ? undefined : logOrderUpdate?.order.quantity;
-
-      const notification: FillNotification = {
-        chatId,
-        market,
-        exec,
-        isBidUser: true,
-        isFull,
-        remaining,
-        trxId: action.trx_id,
-        timestamp: action['@timestamp'],
-      };
-
-      await notifications.send(notification);
+    // Stale protection
+    const age = (Date.now() - new Date(checkpoint).getTime()) / 1000;
+    if (age > MAX_STALE_SECONDS) {
+      const resetTo = new Date().toISOString();
+      console.warn(`[poll] Checkpoint for ${account} is ${Math.round(age)}s old, resetting`);
+      await db.setState(stateKey, resetTo);
+      continue;
     }
 
-    // Notify ask_user (seller) — skip if same as bid_user to avoid double-dip
-    if (exec.ask_user !== exec.bid_user) {
-      const askChats = accountToChats.get(exec.ask_user) ?? [];
-      for (const chatId of askChats) {
-        const orderId = exec.ask_user_order_id;
-        const isFull = corr?.deletedOrderIds.has(orderId) ?? false;
-        const logOrderUpdate = corr?.orderUpdates.get(orderId);
-        const remaining = isFull ? undefined : logOrderUpdate?.order.quantity;
+    try {
+      const withdrawals = await hyperion.getDexWithdrawals(account, checkpoint);
 
-        const notification: FillNotification = {
-          chatId,
-          market,
-          exec,
-          isBidUser: false,
-          isFull,
-          remaining,
-          trxId: action.trx_id,
-          timestamp: action['@timestamp'],
-        };
+      for (const action of withdrawals) {
+        const w = parseWithdrawal(action);
+        if (!w) continue;
 
-        await notifications.send(notification);
+        await notifications.sendWithdrawal(chatId, w, account);
       }
-    }
-  }
 
-  // Advance checkpoint to the latest timestamp seen
-  const latest = latestTimestamp(actions);
-  if (latest) {
-    const next = advanceTimestamp(latest);
-    await db.setState('last_timestamp', next);
+      // Advance checkpoint
+      if (withdrawals.length > 0) {
+        const latest = latestTimestamp(withdrawals);
+        if (latest) {
+          await db.setState(stateKey, advanceTimestamp(latest));
+        }
+      }
+    } catch (err) {
+      console.error(`[poll] Error checking ${account}:`, (err as Error).message);
+    }
+
+    // Delay between accounts to avoid Hyperion rate limits
+    if (i < users.length - 1) {
+      await new Promise(r => setTimeout(r, PER_ACCOUNT_DELAY_MS));
+    }
   }
 }
 
@@ -212,29 +154,20 @@ async function pollDexActions(
 async function main(): Promise<void> {
   console.log('[boot] Starting Metal X Order Bot…');
 
-  // Database
   const db = await createDatabase();
   console.log('[boot] Database initialized');
 
-  // Markets
   const markets = new MarketRegistry(RPC_ENDPOINTS);
   await markets.refresh().catch(err =>
-    console.warn('[boot] Market load failed, using fallback data:', err.message),
+    console.warn('[boot] Market load failed:', err.message),
   );
 
-  // Hyperion client
   const hyperion = new HyperionClient(HYPERION_ENDPOINTS);
-
-  // Telegram bot
   const bot = new Bot(BOT_TOKEN);
-
-  // Notification service
   const notificationService = new NotificationService(bot, db, RATE_LIMIT);
 
-  // Register bot commands
   setupBot(bot, db, markets, notificationService, hyperion);
 
-  // Set BotFather command list
   await bot.api.setMyCommands([
     { command: 'start',   description: 'Welcome message and setup guide' },
     { command: 'link',    description: 'Link your XPR account' },
@@ -244,7 +177,6 @@ async function main(): Promise<void> {
     { command: 'help',    description: 'Show all commands' },
   ]).catch(err => console.warn('[boot] setMyCommands failed:', err.message));
 
-  // Graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`\n[shutdown] Received ${signal}`);
     bot.stop();
@@ -254,12 +186,11 @@ async function main(): Promise<void> {
   process.once('SIGINT',  () => void shutdown('SIGINT'));
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
-  // Start polling loop
   console.log(`[boot] Starting poll loop (interval: ${POLL_INTERVAL_MS}ms)`);
 
   const poll = async () => {
     try {
-      await pollDexActions(hyperion, db, markets, notificationService);
+      await pollWithdrawals(hyperion, db, notificationService);
     } catch (err) {
       console.error('[poll] Unhandled error:', err);
     }
@@ -273,13 +204,11 @@ async function main(): Promise<void> {
     setTimeout(() => void poll(), POLL_INTERVAL_MS);
   };
 
-  // Start bot and polling concurrently
   bot.start({
     onStart: info => console.log(`[bot] Running as @${info.username}`),
     drop_pending_updates: true,
   });
 
-  // Small delay to let the bot connect before polling starts
   setTimeout(() => void poll(), 1_000);
 }
 
