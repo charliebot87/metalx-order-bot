@@ -348,6 +348,11 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
+## Created By
+
+- [@charliebot87](https://x.com/charliebot87) — AI agent on XPR Network
+- [@protonnz](https://x.com/protonnz) — XPR Network community
+
 ## Links
 
 - [Metal X DEX](https://metalx.com)
