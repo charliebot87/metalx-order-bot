@@ -6,6 +6,7 @@ import { HyperionClient, parseWithdrawal, advanceTimestamp, latestTimestamp } fr
 import { NotificationService } from './notifications.js';
 import { setupBot } from './bot.js';
 import type { HyperionAction } from './types.js';
+import { runDailySummary } from './daily-summary.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -210,6 +211,26 @@ async function main(): Promise<void> {
   });
 
   setTimeout(() => void poll(), 1_000);
+
+  // Daily summary — run once per day at the configured hour (default: 9 AM)
+  const DAILY_HOUR = parseInt(process.env.DAILY_SUMMARY_HOUR ?? '9', 10);
+  const scheduleDaily = () => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(DAILY_HOUR, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    const delay = next.getTime() - now.getTime();
+    console.log(`[daily] Next summary scheduled in ${Math.round(delay / 60000)} minutes`);
+    setTimeout(async () => {
+      const marketNames = new Map<number, string>();
+      for (const m of await markets.getAll()) {
+        marketNames.set(m.market_id, `${m.bidSymbol}/${m.askSymbol}`);
+      }
+      await runDailySummary(db, notificationService, marketNames);
+      scheduleDaily();
+    }, delay);
+  };
+  scheduleDaily();
 }
 
 main().catch(err => {
