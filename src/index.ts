@@ -125,11 +125,17 @@ async function pollWithdrawals(
     try {
       const withdrawals = await hyperion.getDexWithdrawals(account, checkpoint);
 
+      // Fetch most recent deposit to correlate "Sold X → Received Y"
+      let deposit: { quantity: string } | null = null;
+      if (withdrawals.length > 0) {
+        deposit = await hyperion.getRecentDeposit(account);
+      }
+
       for (const action of withdrawals) {
         const w = parseWithdrawal(action);
         if (!w) continue;
 
-        await notifications.sendWithdrawal(chatId, w, account);
+        await notifications.sendWithdrawal(chatId, w, account, deposit);
       }
 
       // Advance checkpoint

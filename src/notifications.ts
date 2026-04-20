@@ -34,21 +34,24 @@ function explorerLink(trxId: string): string {
 
 /**
  * Build the Telegram HTML message for a DEX withdrawal notification.
+ * If deposit info is available, shows "Sold X → Received Y".
  */
-export function buildWithdrawalMessage(w: DexWithdrawal, account: string): string {
-  const body = [
-    `💰 <b>Order Filled</b>`,
-    '',
-    `Received: <b>${w.quantity}</b>`,
-    `Account: <code>${account}</code>`,
-  ].join('\n');
+export function buildWithdrawalMessage(w: DexWithdrawal, account: string, deposit?: { quantity: string } | null): string {
+  const lines: string[] = [`💰 <b>Order Filled</b>`, ''];
 
-  const links = [
-    `<a href="${METALX_URL}/dex">📊 View on Metal X</a>`,
-    `<a href="${explorerLink(w.trxId)}">🔍 View Transaction</a>`,
-  ].join('\n');
+  if (deposit) {
+    lines.push(`Sold: <b>${deposit.quantity}</b>`);
+    lines.push(`Received: <b>${w.quantity}</b>`);
+  } else {
+    lines.push(`Received: <b>${w.quantity}</b>`);
+  }
 
-  return `${body}\n\n${links}`;
+  lines.push(`Account: <code>${account}</code>`);
+  lines.push('');
+  lines.push(`<a href="${METALX_URL}/dex">📊 View on Metal X</a>`);
+  lines.push(`<a href="${explorerLink(w.trxId)}">🔍 View Transaction</a>`);
+
+  return lines.join('\n');
 }
 
 // ─── NotificationService ───────────────────────────────────────────────────────
@@ -64,7 +67,7 @@ export class NotificationService {
     this.rateLimiter = new RateLimiter(maxPerMinute);
   }
 
-  async sendWithdrawal(chatId: string, w: DexWithdrawal, account: string): Promise<boolean> {
+  async sendWithdrawal(chatId: string, w: DexWithdrawal, account: string, deposit?: { quantity: string } | null): Promise<boolean> {
     // Dedup by global_seq (unique per action)
     const already = await this.db.hasNotified(chatId, w.globalSeq, 0);
     if (already) return false;
@@ -74,7 +77,7 @@ export class NotificationService {
       return false;
     }
 
-    const message = buildWithdrawalMessage(w, account);
+    const message = buildWithdrawalMessage(w, account, deposit);
 
     try {
       console.log(`[notifications] Sending withdrawal: ${w.quantity} to ${account} (chat ${chatId})`);

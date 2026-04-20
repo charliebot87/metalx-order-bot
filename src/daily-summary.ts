@@ -28,6 +28,13 @@ interface TradeRecord {
   trx_id: string;
 }
 
+interface MarketApiData {
+  market_id: number;
+  symbol: string;
+  bid_token: { code: string; precision: number };
+  ask_token: { code: string; precision: number };
+}
+
 interface DailySummary {
   account: string;
   trades: TradeRecord[];
@@ -130,15 +137,23 @@ function formatSummaryMessage(summary: DailySummary, marketNames: Map<number, st
     lines.push(`• <b>${name}</b>: ${parts.join(', ')}`);
   }
 
-  // Total fees
-  let totalFees = 0;
+  // Total fees — grouped by token symbol
+  // bid_fee is denominated in bid token, ask_fee in ask token
+  const feesBySymbol = new Map<string, number>();
   for (const t of trades) {
     const isBidUser = t.bid_user === account;
-    totalFees += isBidUser ? t.bid_fee : t.ask_fee;
+    const fee = isBidUser ? t.bid_fee : t.ask_fee;
+    if (fee <= 0) continue;
+    // Look up token symbol from marketNames
+    const marketName = marketNames.get(t.market_id) ?? '';
+    const [bidSym, askSym] = marketName.split('/');
+    const feeSymbol = isBidUser ? (bidSym || '?') : (askSym || '?');
+    feesBySymbol.set(feeSymbol, (feesBySymbol.get(feeSymbol) ?? 0) + fee);
   }
-  if (totalFees > 0) {
+  if (feesBySymbol.size > 0) {
     lines.push('');
-    lines.push(`Total fees: ${totalFees.toFixed(6)} XMD`);
+    const feeParts = Array.from(feesBySymbol.entries()).map(([sym, amt]) => `${amt.toFixed(4)} ${sym}`);
+    lines.push(`Fees: ${feeParts.join(', ')}`);
   }
 
   lines.push('');

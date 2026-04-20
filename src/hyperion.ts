@@ -75,7 +75,6 @@ export class HyperionClient {
   /**
    * Fetch transfer actions for a specific account where from=dex.
    * These are withdrawal transfers — the actual funds arriving after a fill.
-   * Queries across all token contracts (eosio.token, xmd.token, xtokens, loan.token).
    */
   async getDexWithdrawals(account: string, afterTimestamp: string, limit = 50): Promise<HyperionAction[]> {
     const params = new URLSearchParams({
@@ -94,6 +93,34 @@ export class HyperionClient {
       const d = a.act.data as Record<string, unknown>;
       return d.from === 'dex' && d.to === account;
     });
+  }
+
+  /**
+   * Fetch the most recent deposit (transfer TO dex) for an account.
+   * Used to correlate "Sold X → Received Y" in notifications.
+   */
+  async getRecentDeposit(account: string): Promise<{ quantity: string; symbol: string } | null> {
+    const params = new URLSearchParams({
+      account,
+      'act.name': 'transfer',
+      sort: 'desc',
+      limit: '10',
+    });
+
+    try {
+      const data = await this.request<HyperionResponse>(`/v2/history/get_actions?${params}`);
+      for (const a of data.actions ?? []) {
+        const d = a.act.data as Record<string, unknown>;
+        if (d.from === account && d.to === 'dex' && typeof d.quantity === 'string') {
+          const qty = d.quantity as string;
+          const sym = qty.split(' ')[1];
+          return { quantity: qty, symbol: sym ?? '' };
+        }
+      }
+    } catch {
+      // Non-critical, just skip
+    }
+    return null;
   }
 
   /**
