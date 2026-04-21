@@ -34,14 +34,47 @@ function explorerLink(trxId: string): string {
 
 /**
  * Build the Telegram HTML message for a DEX withdrawal notification.
- * If deposit info is available, shows "Sold X → Received Y".
+ * If deposit info is available, shows "Sold X → Received Y" with fill %.
  */
-export function buildWithdrawalMessage(w: DexWithdrawal, account: string, deposit?: { quantity: string } | null): string {
+export function buildWithdrawalMessage(
+  w: DexWithdrawal,
+  account: string,
+  deposit?: { quantity: string; originalOrder?: string } | null,
+): string {
   const lines: string[] = [`💰 <b>Order Filled</b>`, ''];
 
   if (deposit) {
+    const soldAmount  = parseFloat(deposit.quantity.split(' ')[0]);
+    const soldSymbol  = deposit.quantity.split(' ')[1] ?? '';
+    const receivedAmount = w.amount;
+
     lines.push(`Sold: <b>${deposit.quantity}</b>`);
     lines.push(`Received: <b>${w.quantity}</b>`);
+
+    // Fill % — only meaningful when deposit and withdrawal are same token direction
+    // We compare original order size (if known) vs received. If not, skip.
+    if (deposit.originalOrder) {
+      const orderAmount = parseFloat(deposit.originalOrder.split(' ')[0]);
+      if (orderAmount > 0 && receivedAmount > 0) {
+        // Fill % based on what came back vs order total
+        // For sell orders: order is in base token, received is XMD
+        // Use deposit as proxy for order size
+        const fillPct = Math.min((soldAmount > 0 ? soldAmount / orderAmount : 1) * 100, 100);
+        lines.push(`Filled: <b>${fillPct.toFixed(1)}%</b>`);
+      }
+    }
+
+    // Fill price
+    const baseTokens = ['XPR','XLTC','XBTC','XMT','XEOS','XXLM','XDOGE','XETH','XBNB','XMATIC','XAVAX','XSOL'];
+    if (baseTokens.includes(soldSymbol) && soldAmount > 0) {
+      // Sold base → received XMD: price = received / sold
+      const price = receivedAmount / soldAmount;
+      lines.push(`Avg price: <b>${price.toFixed(6)} ${w.symbol}/${soldSymbol}</b>`);
+    } else if (baseTokens.includes(w.symbol) && receivedAmount > 0) {
+      // Sold XMD → received base: price = sold / received
+      const price = soldAmount / receivedAmount;
+      lines.push(`Avg price: <b>${price.toFixed(6)} ${soldSymbol}/${w.symbol}</b>`);
+    }
   } else {
     lines.push(`Received: <b>${w.quantity}</b>`);
   }
@@ -67,7 +100,7 @@ export class NotificationService {
     this.rateLimiter = new RateLimiter(maxPerMinute);
   }
 
-  async sendWithdrawal(chatId: string, w: DexWithdrawal, account: string, deposit?: { quantity: string } | null): Promise<boolean> {
+  async sendWithdrawal(chatId: string, w: DexWithdrawal, account: string, deposit?: { quantity: string; originalOrder?: string } | null): Promise<boolean> {
     // Dedup by global_seq (unique per action)
     const already = await this.db.hasNotified(chatId, w.globalSeq, 0);
     if (already) return false;
