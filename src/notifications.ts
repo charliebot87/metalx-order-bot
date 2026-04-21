@@ -1,6 +1,6 @@
 import type { Bot } from 'grammy';
 import type { IDatabase, OrderInfo } from './types.js';
-import type { DexWithdrawal } from './hyperion.js';
+import type { DexWithdrawal, DexDeposit } from './hyperion.js';
 
 // ─── Rate limiter ──────────────────────────────────────────────────────────────
 
@@ -65,6 +65,19 @@ export function buildWithdrawalMessage(
   return lines.join('\n');
 }
 
+/**
+ * Build the Telegram HTML message for an "Order Placed" notification.
+ */
+export function buildOrderPlacedMessage(deposit: DexDeposit, account: string): string {
+  const lines: string[] = [];
+  lines.push('📋 <b>Order Placed</b>', '');
+  lines.push(`Selling: <b>${deposit.quantity}</b>`);
+  lines.push(`Account: <code>${account}</code>`);
+  lines.push('');
+  lines.push(`<a href="${EXPLORER_URL}/${deposit.trxId}">🔍 View Transaction</a>`);
+  return lines.join('\n');
+}
+
 // ─── NotificationService ───────────────────────────────────────────────────────
 
 export class NotificationService {
@@ -107,6 +120,28 @@ export class NotificationService {
         console.error(`[notifications] Failed to send to ${chatId}:`, errMsg);
       }
       return false;
+    }
+  }
+
+  async sendOrderPlaced(chatId: string, deposit: DexDeposit, account: string): Promise<void> {
+    if (!this.rateLimiter.allow(chatId)) {
+      console.warn(`[notifications] Rate limit hit for chat ${chatId}`);
+      return;
+    }
+    const message = buildOrderPlacedMessage(deposit, account);
+    try {
+      console.log(`[notifications] Sending order placed: ${deposit.quantity} from ${account} (chat ${chatId})`);
+      await this.bot.api.sendMessage(chatId, message, {
+        parse_mode: 'HTML',
+        link_preview_options: { is_disabled: true },
+      });
+    } catch (err) {
+      const errMsg = (err as Error).message ?? '';
+      if (errMsg.includes('403') || errMsg.includes('blocked')) {
+        console.warn(`[notifications] User ${chatId} blocked bot`);
+      } else {
+        console.error(`[notifications] Failed to send to ${chatId}:`, errMsg);
+      }
     }
   }
 

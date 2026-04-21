@@ -203,12 +203,13 @@ export class PostgresDatabase implements IDatabase {
     deposit_symbol: string;
     deposit_amount: number;
     received_symbol: string;
-  }): Promise<void> {
-    await this.pool.query(
+  }): Promise<boolean> {
+    const { rows } = await this.pool.query(
       `INSERT INTO dex_orders
          (telegram_chat_id, xpr_account, deposit_trx_id, deposit_quantity, deposit_symbol, deposit_amount, received_symbol)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (deposit_trx_id) DO NOTHING`,
+       ON CONFLICT (deposit_trx_id) DO NOTHING
+       RETURNING id`,
       [
         order.telegram_chat_id,
         order.xpr_account,
@@ -219,6 +220,7 @@ export class PostgresDatabase implements IDatabase {
         order.received_symbol,
       ],
     );
+    return rows.length > 0;
   }
 
   async addFill(xpr_account: string, _received_symbol: string, received_amount: number): Promise<OrderInfo | null> {

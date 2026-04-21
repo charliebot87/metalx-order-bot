@@ -111,7 +111,7 @@ export interface IDatabase {
     deposit_symbol: string;
     deposit_amount: number;
     received_symbol: string;
-  }): Promise<void>;
+  }): Promise<boolean>;
 
   addFill(xpr_account: string, received_symbol: string, received_amount: number): Promise<OrderInfo | null>;
 }

@@ -132,7 +132,7 @@ async function pollWithdrawals(
       for (const action of deposits) {
         const d = parseDeposit(action);
         if (!d) continue;
-        await db.upsertOrder({
+        const isNew = await db.upsertOrder({
           telegram_chat_id: chatId,
           xpr_account:      account,
           deposit_trx_id:   d.trxId,
@@ -141,6 +141,9 @@ async function pollWithdrawals(
           deposit_amount:   d.amount,
           received_symbol:  '',
         });
+        if (isNew) {
+          await notifications.sendOrderPlaced(chatId, d, account);
+        }
       }
 
       for (const action of withdrawals) {

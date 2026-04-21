@@ -190,8 +190,8 @@ export class SqliteDatabase implements IDatabase {
     deposit_symbol: string;
     deposit_amount: number;
     received_symbol: string;
-  }): Promise<void> {
-    this.db
+  }): Promise<boolean> {
+    const result = this.db
       .prepare(
         `INSERT INTO dex_orders
            (telegram_chat_id, xpr_account, deposit_trx_id, deposit_quantity, deposit_symbol, deposit_amount, received_symbol)
@@ -207,6 +207,7 @@ export class SqliteDatabase implements IDatabase {
         order.deposit_amount,
         order.received_symbol,
       );
+    return result.changes > 0;
   }
 
   async addFill(xpr_account: string, _received_symbol: string, received_amount: number): Promise<OrderInfo | null> {
