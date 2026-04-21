@@ -13,12 +13,36 @@ A self-hosted Telegram bot that sends you real-time notifications when your orde
 
 ## What It Looks Like
 
-**Real-time fill notification:**
+**Single fill:**
 ```
-💰 Order Filled
+💰 Order Fill
 
-Sold: 500.0000 XPR
-Received: 1.167831 XMD
+Sold: 854.0000 XPR
+Fill received: 1.992400 XMD
+Account: charliebot
+
+📊 View on Metal X
+🔍 View Transaction
+```
+
+**Partial fill (same order filling in multiple chunks):**
+```
+💰 Order Fill (partial)
+
+Sold: 854.0000 XPR
+Fill received: 0.583363 XMD
+Total received: 4.162400 XMD (fill 3)
+Account: charliebot
+
+📊 View on Metal X
+🔍 View Transaction
+```
+
+**Fallback (no order context found):**
+```
+💰 Order Fill
+
+Received: 1.992400 XMD
 Account: charliebot
 
 📊 View on Metal X
