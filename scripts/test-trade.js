@@ -17,7 +17,8 @@ import { JsonRpc, Api, JsSignatureProvider } from '@proton/js';
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const ACCOUNT = 'charliebot';
-const PRIVATE_KEY = 'PVT_K1_2NwhXnJhcWYoTVWsT24fpDKaonFxiWQSnobqXaqsAFfkFArzar';
+const PRIVATE_KEY = process.env.XPR_PRIVATE_KEY;
+if (!PRIVATE_KEY) { console.error('Error: XPR_PRIVATE_KEY env var required'); process.exit(1); }
 const RPC_ENDPOINT = 'https://api.protonnz.com';
 const EXPLORER = 'https://explorer.xprnetwork.org/transaction';
 
@@ -100,7 +101,9 @@ async function placeBuyOrder() {
             price: BUY_PRICE,
             bid_symbol: BID_SYMBOL,
             ask_symbol: ASK_SYMBOL,
-            trigger_price: 0,
+            trigger_price: null,
+            fill_type: 0,
+            referrer: '',
           },
         },
         // 3. Process the orderbook
@@ -108,11 +111,7 @@ async function placeBuyOrder() {
           account: 'dex',
           name: 'process',
           authorization: [{ actor: ACCOUNT, permission: 'active' }],
-          data: {
-            account: ACCOUNT,
-            market_id: MARKET_ID,
-            num_records_to_process: 30,
-          },
+          data: { q_size: 10, show_error_msg: false },
         },
       ],
     },
@@ -164,7 +163,9 @@ async function placeSellOrder() {
             price: SELL_PRICE,
             bid_symbol: BID_SYMBOL,
             ask_symbol: ASK_SYMBOL,
-            trigger_price: 0,
+            trigger_price: null,
+            fill_type: 0,
+            referrer: '',
           },
         },
         // 3. Process the orderbook
@@ -172,11 +173,7 @@ async function placeSellOrder() {
           account: 'dex',
           name: 'process',
           authorization: [{ actor: ACCOUNT, permission: 'active' }],
-          data: {
-            account: ACCOUNT,
-            market_id: MARKET_ID,
-            num_records_to_process: 30,
-          },
+          data: { q_size: 10, show_error_msg: false },
         },
       ],
     },
