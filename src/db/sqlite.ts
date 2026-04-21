@@ -210,16 +210,16 @@ export class SqliteDatabase implements IDatabase {
     return result.changes > 0;
   }
 
-  async addFill(xpr_account: string, _received_symbol: string, received_amount: number): Promise<OrderInfo | null> {
+  async addFill(xpr_account: string, received_symbol: string, received_amount: number): Promise<OrderInfo | null> {
     const row = this.db
       .prepare(
         `SELECT id, deposit_quantity, deposit_symbol, deposit_amount
          FROM dex_orders
-         WHERE xpr_account = ?
+         WHERE xpr_account = ? AND deposit_symbol != ?
          ORDER BY created_at DESC
          LIMIT 1`
       )
-      .get(xpr_account) as { id: number; deposit_quantity: string; deposit_symbol: string; deposit_amount: number } | undefined;
+      .get(xpr_account, received_symbol) as { id: number; deposit_quantity: string; deposit_symbol: string; deposit_amount: number } | undefined;
 
     if (!row) return null;
 

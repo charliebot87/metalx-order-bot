@@ -54,11 +54,11 @@ export function buildWithdrawalMessage(
     }
     if (deposit_amount > 0) {
       const isBuy = deposit_symbol === 'XMD';
-      const price = isBuy
-        ? deposit_amount / w.amount
-        : w.amount / deposit_amount;
-      const [soldSym, recvSym] = isBuy ? [deposit_symbol, w.symbol] : [w.symbol, deposit_symbol];
-      lines.push(`Price: <b>${price.toFixed(6)} ${recvSym}/${soldSym}</b>`);
+      const xmdAmount = isBuy ? deposit_amount : w.amount;
+      const baseAmount = isBuy ? w.amount : deposit_amount;
+      const baseSymbol = isBuy ? w.symbol : deposit_symbol;
+      const price = xmdAmount / baseAmount;
+      lines.push(`Price: <b>${price.toFixed(6)} XMD/${baseSymbol}</b>`);
     }
   } else {
     lines.push('💰 <b>Order Fill</b>', '');
@@ -78,8 +78,9 @@ export function buildWithdrawalMessage(
  */
 export function buildOrderPlacedMessage(deposit: DexDeposit, account: string): string {
   const lines: string[] = [];
+  const isBuy = deposit.symbol === 'XMD';
   lines.push('📋 <b>Order Placed</b>', '');
-  lines.push(`Selling: <b>${deposit.quantity}</b>`);
+  lines.push(`${isBuy ? 'Buying with' : 'Selling'}: <b>${deposit.quantity}</b>`);
   lines.push(`Account: <code>${account}</code>`);
   lines.push('');
   lines.push(`<a href="${EXPLORER_URL}/${deposit.trxId}">🔍 View Transaction</a>`);

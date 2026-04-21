@@ -223,14 +223,14 @@ export class PostgresDatabase implements IDatabase {
     return rows.length > 0;
   }
 
-  async addFill(xpr_account: string, _received_symbol: string, received_amount: number): Promise<OrderInfo | null> {
+  async addFill(xpr_account: string, received_symbol: string, received_amount: number): Promise<OrderInfo | null> {
     const { rows: found } = await this.pool.query(
       `SELECT id, deposit_quantity, deposit_symbol, deposit_amount
        FROM dex_orders
-       WHERE xpr_account = $1
+       WHERE xpr_account = $1 AND deposit_symbol != $2
        ORDER BY created_at DESC
        LIMIT 1`,
-      [xpr_account],
+      [xpr_account, received_symbol],
     );
 
     if (!found[0]) return null;
