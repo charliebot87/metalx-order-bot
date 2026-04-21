@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { Bot } from 'grammy';
 import { createDatabase } from './db/index.js';
 import { MarketRegistry } from './markets.js';
-import { HyperionClient, parseWithdrawal, advanceTimestamp, latestTimestamp } from './hyperion.js';
+import { HyperionClient, parseWithdrawal, parseDeposit, advanceTimestamp, latestTimestamp } from './hyperion.js';
 import { NotificationService } from './notifications.js';
 import { setupBot } from './bot.js';
 import type { HyperionAction } from './types.js';
@@ -123,24 +123,38 @@ async function pollWithdrawals(
     }
 
     try {
-      const withdrawals = await hyperion.getDexWithdrawals(account, checkpoint);
+      const [withdrawals, deposits] = await Promise.all([
+        hyperion.getDexWithdrawals(account, checkpoint),
+        hyperion.getDexDeposits(account, checkpoint),
+      ]);
 
-      // Fetch most recent deposit to correlate "Sold X → Received Y"
-      let deposit: { quantity: string } | null = null;
-      if (withdrawals.length > 0) {
-        deposit = await hyperion.getRecentDeposit(account);
+      // Record each deposit as an order so we can track fills
+      for (const action of deposits) {
+        const d = parseDeposit(action);
+        if (!d) continue;
+        await db.upsertOrder({
+          telegram_chat_id: chatId,
+          xpr_account:      account,
+          deposit_trx_id:   d.trxId,
+          deposit_quantity: d.quantity,
+          deposit_symbol:   d.symbol,
+          deposit_amount:   d.amount,
+          received_symbol:  '',
+        });
       }
 
       for (const action of withdrawals) {
         const w = parseWithdrawal(action);
         if (!w) continue;
 
-        await notifications.sendWithdrawal(chatId, w, account, deposit);
+        const orderInfo = await db.addFill(account, w.symbol, w.amount);
+        await notifications.sendWithdrawal(chatId, w, account, orderInfo);
       }
 
-      // Advance checkpoint
-      if (withdrawals.length > 0) {
-        const latest = latestTimestamp(withdrawals);
+      // Advance checkpoint past the latest seen action
+      const allActions = [...withdrawals, ...deposits];
+      if (allActions.length > 0) {
+        const latest = latestTimestamp(allActions);
         if (latest) {
           await db.setState(stateKey, advanceTimestamp(latest));
         }

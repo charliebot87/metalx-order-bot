@@ -1,5 +1,5 @@
 import { Pool, PoolClient } from 'pg';
-import type { IDatabase, UserRow } from '../types.js';
+import type { IDatabase, UserRow, OrderInfo } from '../types.js';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -37,6 +37,24 @@ CREATE INDEX IF NOT EXISTS idx_users_account
 
 CREATE INDEX IF NOT EXISTS idx_notif_lookup
   ON notification_log(telegram_chat_id, trade_id, order_id);
+
+CREATE TABLE IF NOT EXISTS dex_orders (
+  id               SERIAL PRIMARY KEY,
+  telegram_chat_id TEXT             NOT NULL,
+  xpr_account      TEXT             NOT NULL,
+  deposit_trx_id   TEXT             NOT NULL UNIQUE,
+  deposit_quantity TEXT             NOT NULL,
+  deposit_symbol   TEXT             NOT NULL DEFAULT '',
+  deposit_amount   DOUBLE PRECISION NOT NULL DEFAULT 0,
+  received_symbol  TEXT             NOT NULL DEFAULT '',
+  total_received   DOUBLE PRECISION NOT NULL DEFAULT 0,
+  fill_count       INTEGER          NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ      NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_dex_orders_account
+  ON dex_orders(xpr_account, created_at);
 `;
 
 export class PostgresDatabase implements IDatabase {
@@ -173,6 +191,69 @@ export class PostgresDatabase implements IDatabase {
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       [key, value]
     );
+  }
+
+  // ─── Order fill tracking ─────────────────────────────────────────────────────
+
+  async upsertOrder(order: {
+    telegram_chat_id: string;
+    xpr_account: string;
+    deposit_trx_id: string;
+    deposit_quantity: string;
+    deposit_symbol: string;
+    deposit_amount: number;
+    received_symbol: string;
+  }): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO dex_orders
+         (telegram_chat_id, xpr_account, deposit_trx_id, deposit_quantity, deposit_symbol, deposit_amount, received_symbol)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (deposit_trx_id) DO NOTHING`,
+      [
+        order.telegram_chat_id,
+        order.xpr_account,
+        order.deposit_trx_id,
+        order.deposit_quantity,
+        order.deposit_symbol,
+        order.deposit_amount,
+        order.received_symbol,
+      ],
+    );
+  }
+
+  async addFill(xpr_account: string, _received_symbol: string, received_amount: number): Promise<OrderInfo | null> {
+    const { rows: found } = await this.pool.query(
+      `SELECT id, deposit_quantity, deposit_symbol, deposit_amount
+       FROM dex_orders
+       WHERE xpr_account = $1
+         AND created_at >= NOW() - INTERVAL '1 day'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [xpr_account],
+    );
+
+    if (!found[0]) return null;
+    const id = found[0].id;
+
+    const { rows: updated } = await this.pool.query(
+      `UPDATE dex_orders
+       SET total_received = total_received + $1,
+           fill_count     = fill_count + 1,
+           updated_at     = NOW()
+       WHERE id = $2
+       RETURNING deposit_quantity, deposit_symbol, deposit_amount, total_received, fill_count`,
+      [received_amount, id],
+    );
+
+    if (!updated[0]) return null;
+    const r = updated[0];
+    return {
+      deposit_quantity: r.deposit_quantity,
+      deposit_symbol:   r.deposit_symbol,
+      deposit_amount:   parseFloat(r.deposit_amount),
+      total_received:   parseFloat(r.total_received),
+      fill_count:       r.fill_count,
+    };
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────

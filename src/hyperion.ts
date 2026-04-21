@@ -96,6 +96,28 @@ export class HyperionClient {
   }
 
   /**
+   * Fetch transfer actions for a specific account where from=account, to=dex.
+   * These are deposit transfers — funds sent to the DEX to place an order.
+   */
+  async getDexDeposits(account: string, afterTimestamp: string, limit = 50): Promise<HyperionAction[]> {
+    const params = new URLSearchParams({
+      account,
+      'act.name': 'transfer',
+      sort: 'asc',
+      after: afterTimestamp,
+      limit: String(limit),
+    });
+
+    const data = await this.request<HyperionResponse>(`/v2/history/get_actions?${params}`);
+    const actions = data.actions ?? [];
+
+    return actions.filter(a => {
+      const d = a.act.data as Record<string, unknown>;
+      return d.from === account && d.to === 'dex';
+    });
+  }
+
+  /**
    * Fetch the most recent deposit (transfer TO dex) for an account.
    * Used to correlate "Sold X → Received Y" in notifications.
    */
@@ -197,6 +219,37 @@ export function parseWithdrawal(action: HyperionAction): DexWithdrawal | null {
     symbol: parts[1],
     amount: parseFloat(parts[0]),
     contract: action.act.account,
+    trxId: action.trx_id,
+    timestamp: ensureUtc(action['@timestamp']),
+    globalSeq: typeof action.global_sequence === 'number' ? action.global_sequence : Number(action.global_sequence),
+  };
+}
+
+// ─── Deposit data extractor ────────────────────────────────────────────────────
+
+export interface DexDeposit {
+  from: string;
+  quantity: string;   // e.g. "854.0000 XPR"
+  symbol: string;     // e.g. "XPR"
+  amount: number;     // e.g. 854.0
+  trxId: string;
+  timestamp: string;
+  globalSeq: number;
+}
+
+export function parseDeposit(action: HyperionAction): DexDeposit | null {
+  const d = action.act.data as Record<string, unknown>;
+  if (d.to !== 'dex' || typeof d.quantity !== 'string') return null;
+
+  const qty = d.quantity as string;
+  const parts = qty.split(' ');
+  if (parts.length !== 2) return null;
+
+  return {
+    from: String(d.from),
+    quantity: qty,
+    symbol: parts[1],
+    amount: parseFloat(parts[0]),
     trxId: action.trx_id,
     timestamp: ensureUtc(action['@timestamp']),
     globalSeq: typeof action.global_sequence === 'number' ? action.global_sequence : Number(action.global_sequence),

@@ -1,7 +1,7 @@
 import BetterSqlite3 from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import type { IDatabase, UserRow } from "../types.js";
+import type { IDatabase, UserRow, OrderInfo } from "../types.js";
 
 const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS users (
@@ -28,9 +28,24 @@ const SCHEMA_STATEMENTS = [
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 )`,
+  `CREATE TABLE IF NOT EXISTS dex_orders (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  telegram_chat_id TEXT    NOT NULL,
+  xpr_account      TEXT    NOT NULL,
+  deposit_trx_id   TEXT    NOT NULL UNIQUE,
+  deposit_quantity TEXT    NOT NULL,
+  deposit_symbol   TEXT    NOT NULL DEFAULT '',
+  deposit_amount   REAL    NOT NULL DEFAULT 0,
+  received_symbol  TEXT    NOT NULL DEFAULT '',
+  total_received   REAL    NOT NULL DEFAULT 0,
+  fill_count       INTEGER NOT NULL DEFAULT 0,
+  created_at       TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`,
   `CREATE INDEX IF NOT EXISTS idx_users_verified ON users(verified) WHERE verified = 1`,
   `CREATE INDEX IF NOT EXISTS idx_users_account ON users(xpr_account)`,
   `CREATE INDEX IF NOT EXISTS idx_notif_lookup ON notification_log(telegram_chat_id, trade_id, order_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_dex_orders_account ON dex_orders(xpr_account, created_at)`,
 ];
 
 export class SqliteDatabase implements IDatabase {
@@ -163,6 +178,76 @@ export class SqliteDatabase implements IDatabase {
          ON CONFLICT(key) DO UPDATE SET value = excluded.value`
       )
       .run(key, value);
+  }
+
+  // Order fill tracking
+
+  async upsertOrder(order: {
+    telegram_chat_id: string;
+    xpr_account: string;
+    deposit_trx_id: string;
+    deposit_quantity: string;
+    deposit_symbol: string;
+    deposit_amount: number;
+    received_symbol: string;
+  }): Promise<void> {
+    this.db
+      .prepare(
+        `INSERT INTO dex_orders
+           (telegram_chat_id, xpr_account, deposit_trx_id, deposit_quantity, deposit_symbol, deposit_amount, received_symbol)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(deposit_trx_id) DO NOTHING`
+      )
+      .run(
+        order.telegram_chat_id,
+        order.xpr_account,
+        order.deposit_trx_id,
+        order.deposit_quantity,
+        order.deposit_symbol,
+        order.deposit_amount,
+        order.received_symbol,
+      );
+  }
+
+  async addFill(xpr_account: string, _received_symbol: string, received_amount: number): Promise<OrderInfo | null> {
+    const row = this.db
+      .prepare(
+        `SELECT id, deposit_quantity, deposit_symbol, deposit_amount
+         FROM dex_orders
+         WHERE xpr_account = ?
+           AND created_at >= datetime('now', '-1 day')
+         ORDER BY created_at DESC
+         LIMIT 1`
+      )
+      .get(xpr_account) as { id: number; deposit_quantity: string; deposit_symbol: string; deposit_amount: number } | undefined;
+
+    if (!row) return null;
+
+    this.db
+      .prepare(
+        `UPDATE dex_orders
+         SET total_received = total_received + ?,
+             fill_count     = fill_count + 1,
+             updated_at     = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .run(received_amount, row.id);
+
+    const updated = this.db
+      .prepare(
+        `SELECT deposit_quantity, deposit_symbol, deposit_amount, total_received, fill_count
+         FROM dex_orders WHERE id = ?`
+      )
+      .get(row.id) as any | undefined;
+
+    if (!updated) return null;
+    return {
+      deposit_quantity: updated.deposit_quantity,
+      deposit_symbol:   updated.deposit_symbol,
+      deposit_amount:   updated.deposit_amount,
+      total_received:   updated.total_received,
+      fill_count:       updated.fill_count,
+    };
   }
 
   // Helpers

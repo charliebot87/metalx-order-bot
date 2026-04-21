@@ -1,5 +1,5 @@
 import type { Bot } from 'grammy';
-import type { IDatabase } from './types.js';
+import type { IDatabase, OrderInfo } from './types.js';
 import type { DexWithdrawal } from './hyperion.js';
 
 // ─── Rate limiter ──────────────────────────────────────────────────────────────
@@ -34,48 +34,26 @@ function explorerLink(trxId: string): string {
 
 /**
  * Build the Telegram HTML message for a DEX withdrawal notification.
- * If deposit info is available, shows "Sold X → Received Y" with fill %.
+ * Uses orderInfo to show cumulative fill progress when available.
  */
 export function buildWithdrawalMessage(
   w: DexWithdrawal,
   account: string,
-  deposit?: { quantity: string; originalOrder?: string } | null,
+  orderInfo: OrderInfo | null,
 ): string {
-  const lines: string[] = [`💰 <b>Order Filled</b>`, ''];
+  const lines: string[] = [];
 
-  if (deposit) {
-    const soldAmount  = parseFloat(deposit.quantity.split(' ')[0]);
-    const soldSymbol  = deposit.quantity.split(' ')[1] ?? '';
-    const receivedAmount = w.amount;
-
-    lines.push(`Sold: <b>${deposit.quantity}</b>`);
-    lines.push(`Received: <b>${w.quantity}</b>`);
-
-    // Fill % — only meaningful when deposit and withdrawal are same token direction
-    // We compare original order size (if known) vs received. If not, skip.
-    if (deposit.originalOrder) {
-      const orderAmount = parseFloat(deposit.originalOrder.split(' ')[0]);
-      if (orderAmount > 0 && receivedAmount > 0) {
-        // Fill % based on what came back vs order total
-        // For sell orders: order is in base token, received is XMD
-        // Use deposit as proxy for order size
-        const fillPct = Math.min((soldAmount > 0 ? soldAmount / orderAmount : 1) * 100, 100);
-        lines.push(`Filled: <b>${fillPct.toFixed(1)}%</b>`);
-      }
-    }
-
-    // Fill price
-    const baseTokens = ['XPR','XLTC','XBTC','XMT','XEOS','XXLM','XDOGE','XETH','XBNB','XMATIC','XAVAX','XSOL'];
-    if (baseTokens.includes(soldSymbol) && soldAmount > 0) {
-      // Sold base → received XMD: price = received / sold
-      const price = receivedAmount / soldAmount;
-      lines.push(`Avg price: <b>${price.toFixed(6)} ${w.symbol}/${soldSymbol}</b>`);
-    } else if (baseTokens.includes(w.symbol) && receivedAmount > 0) {
-      // Sold XMD → received base: price = sold / received
-      const price = soldAmount / receivedAmount;
-      lines.push(`Avg price: <b>${price.toFixed(6)} ${soldSymbol}/${w.symbol}</b>`);
+  if (orderInfo) {
+    const { deposit_quantity, total_received, fill_count } = orderInfo;
+    const title = fill_count > 1 ? '💰 <b>Order Fill (partial)</b>' : '💰 <b>Order Fill</b>';
+    lines.push(title, '');
+    lines.push(`Sold: <b>${deposit_quantity}</b>`);
+    lines.push(`Fill received: <b>${w.quantity}</b>`);
+    if (fill_count > 1) {
+      lines.push(`Total received: <b>${total_received.toFixed(6)} ${w.symbol} (fill ${fill_count})</b>`);
     }
   } else {
+    lines.push('💰 <b>Order Fill</b>', '');
     lines.push(`Received: <b>${w.quantity}</b>`);
   }
 
@@ -100,7 +78,7 @@ export class NotificationService {
     this.rateLimiter = new RateLimiter(maxPerMinute);
   }
 
-  async sendWithdrawal(chatId: string, w: DexWithdrawal, account: string, deposit?: { quantity: string; originalOrder?: string } | null): Promise<boolean> {
+  async sendWithdrawal(chatId: string, w: DexWithdrawal, account: string, orderInfo: OrderInfo | null): Promise<boolean> {
     // Dedup by global_seq (unique per action)
     const already = await this.db.hasNotified(chatId, w.globalSeq, 0);
     if (already) return false;
@@ -110,7 +88,7 @@ export class NotificationService {
       return false;
     }
 
-    const message = buildWithdrawalMessage(w, account, deposit);
+    const message = buildWithdrawalMessage(w, account, orderInfo);
 
     try {
       console.log(`[notifications] Sending withdrawal: ${w.quantity} to ${account} (chat ${chatId})`);
