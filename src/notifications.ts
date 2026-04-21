@@ -44,13 +44,21 @@ export function buildWithdrawalMessage(
   const lines: string[] = [];
 
   if (orderInfo) {
-    const { deposit_quantity, total_received, fill_count } = orderInfo;
+    const { deposit_quantity, deposit_symbol, deposit_amount, total_received, fill_count } = orderInfo;
     const title = fill_count > 1 ? '💰 <b>Order Fill (partial)</b>' : '💰 <b>Order Fill</b>';
     lines.push(title, '');
     lines.push(`Sold: <b>${deposit_quantity}</b>`);
     lines.push(`Fill received: <b>${w.quantity}</b>`);
     if (fill_count > 1) {
       lines.push(`Total received: <b>${total_received.toFixed(6)} ${w.symbol} (fill ${fill_count})</b>`);
+    }
+    if (deposit_amount > 0) {
+      const isBuy = deposit_symbol === 'XMD';
+      const price = isBuy
+        ? deposit_amount / w.amount
+        : w.amount / deposit_amount;
+      const [soldSym, recvSym] = isBuy ? [deposit_symbol, w.symbol] : [w.symbol, deposit_symbol];
+      lines.push(`Price: <b>${price.toFixed(6)} ${recvSym}/${soldSym}</b>`);
     }
   } else {
     lines.push('💰 <b>Order Fill</b>', '');

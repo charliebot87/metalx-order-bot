@@ -216,7 +216,6 @@ export class SqliteDatabase implements IDatabase {
         `SELECT id, deposit_quantity, deposit_symbol, deposit_amount
          FROM dex_orders
          WHERE xpr_account = ?
-           AND created_at >= datetime('now', '-1 day')
          ORDER BY created_at DESC
          LIMIT 1`
       )

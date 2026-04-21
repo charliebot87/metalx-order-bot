@@ -228,7 +228,6 @@ export class PostgresDatabase implements IDatabase {
       `SELECT id, deposit_quantity, deposit_symbol, deposit_amount
        FROM dex_orders
        WHERE xpr_account = $1
-         AND created_at >= NOW() - INTERVAL '1 day'
        ORDER BY created_at DESC
        LIMIT 1`,
       [xpr_account],
